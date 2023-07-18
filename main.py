@@ -2,7 +2,7 @@ import asyncio
 import json
 import kookvoice
 from khl import *
-from khl.card import CardMessage, Card, Module, Element, Types
+from khl.card import CardMessage, Card, Module, Element, Types, Struct
 import music
 import sys
 
@@ -38,42 +38,45 @@ async def add_song(guild_id:str,author_id:str,song_url:str,extra_data):
     voice_channel_id = await find_user(guild_id, author_id)
     player = kookvoice.Player(guild_id, voice_channel_id, bot_token)
     player.add_music(song_url, extra_data)
-
-# 在网易云搜歌
-# 指令：/搜歌 <关键词>
-@bot.command(name='搜歌')
-async def search_song(msg:Message,keyword:str):
-    global musicIdUrlMap
-    d = {"hlpretag": "<span class=\"s-fc7\">", "hlposttag": "</span>", "s": keyword, "type": "1", "offset": "0",
-         "total": "true", "limit": "30", "csrf_token": ""}
-    d = json.dumps(d)
-    random_param = music.get_random()
-    param = music.get_final_param(d, random_param)
-    song_list = music.get_music_list(param['params'], param['encSecKey'])
-    c = Card()
-    c.append(Module.Section('搜索关键词：'+keyword))
-    c.append(Module.Divider())
-    if len(song_list) > 0:
-        song_list = json.loads(song_list)['result']['songs']
-        for i, item in enumerate(song_list):
-            item = json.dumps(item)
-            song_id=str(json.loads(str(item))['id'])
-            name=json.loads(str(item))['name'] + ' - ' + json.loads(str(item))['ar'][0]['name']
-            d = {"ids": "[" + song_id + "]", "level": "standard", "encodeType": "",
-                 "csrf_token": ""}
+ 
+async def on_message(msg:Message):
+    print(f'''{msg.author.nickname}({msg.author_id}) [{msg.ctx.channel.id}] {msg.content}''')
+    if(msg.type==MessageTypes.TEXT or msg.type==MessageTypes.KMD):
+        if(msg.content.startswith('/搜歌 ')):
+            keyword=msg.content.replace('/搜歌 ','')
+            global musicIdUrlMap
+            d = {"hlpretag": "<span class=\"s-fc7\">", "hlposttag": "</span>", "s": keyword, "type": "1", "offset": "0",
+                "total": "true", "limit": "30", "csrf_token": ""}
             d = json.dumps(d)
+            random_param = music.get_random()
             param = music.get_final_param(d, random_param)
-            song_info = music.get_reply(param['params'], param['encSecKey'])
-            if len(song_info) > 0:
-                song_info = json.loads(song_info)
-                song_url = json.dumps(song_info['data'][0]['url'], ensure_ascii=False)
-                musicIdUrlMap[song_id] = [song_url,name]
-                c.append(Module.Section(name,Element.Button('点歌','play-' + song_id,Types.Click.RETURN_VAL,'primary')))
-            # else:
-            #     ret += "\n该首歌曲解析失败，可能是因为歌曲格式问题"
-    else:
-        c.append(Module.Section('很抱歉，未能搜索到相关歌曲信息'))
-    await msg.ctx.channel.send(CardMessage(c))
+            song_list = music.get_music_list(param['params'], param['encSecKey'])
+            c = Card()
+            c.append(Module.Section('搜索关键词：'+keyword))
+            c.append(Module.Divider())
+            if len(song_list) > 0:
+                song_list = json.loads(song_list)['result']['songs']
+                for i, item in enumerate(song_list):
+                    item = json.dumps(item)
+                    song_id=str(json.loads(str(item))['id'])
+                    name=json.loads(str(item))['name'] + ' - ' + json.loads(str(item))['ar'][0]['name']
+                    d = {"ids": "[" + song_id + "]", "level": "standard", "encodeType": "",
+                         "csrf_token": ""}
+                    d = json.dumps(d)
+                    param = music.get_final_param(d, random_param)
+                    song_info = music.get_reply(param['params'], param['encSecKey'])
+                    if len(song_info) > 0:
+                        song_info = json.loads(song_info)
+                        song_url = json.dumps(song_info['data'][0]['url'], ensure_ascii=False)
+                        musicIdUrlMap[song_id] = [song_url.replace('"',''),name]
+                        c.append(Module.Section(name,Element.Button('点歌','play-' + song_id,Types.Click.RETURN_VAL,'primary')))
+                    # else:
+                    #     ret += "\n该首歌曲解析失败，可能是因为歌曲格式问题"
+            else:
+                c.append(Module.Section('很抱歉，未能搜索到相关歌曲信息'))
+            await msg.ctx.channel.send(CardMessage(c))
+
+bot.add_message_handler(on_message,[MessageTypes.AUDIO,MessageTypes.CARD,MessageTypes.FILE,MessageTypes.IMG,MessageTypes.SYS,MessageTypes.VIDEO])   
 
 @bot.on_event(EventTypes.MESSAGE_BTN_CLICK)
 async def on_button_click(bot: Bot, e: Event):
@@ -100,15 +103,21 @@ async def on_button_click(bot: Bot, e: Event):
                 return
             c = Card()
             c.append(Module.Section('正在播放'))
-            c.append(Module.Header(f"{music_list[1]['音乐名字']} 点歌人：{music_list[1]['点歌人']}"))
+            c.append(Module.Header(f"{music_list[1]['音乐名字']}"))
+            c.append(Module.Section(f"点歌人：{music_list[1]['点歌人']}"))
             c.append(Module.Divider())
             c.append(Module.Section(f"列表中歌曲"))
             if(music_list[2]==[]):
                 c.append(Module.Section(f"无更多歌曲"))
             else:
+                paragraph = Struct.Paragraph(2,Element.Text('**歌曲**'))
+                paragraph.append(Element.Text('**点歌人**'))
                 for index, i in enumerate(music_list[2]):
                     # 这里的extra data 便是点歌的时候放入的东西
-                    c.append(Module.Section(f"{index + 1}. {i['音乐名字']} 点歌人：{i['点歌人']}"))
+                    paragraph.append(Element.Text(f"{index + 1}. {i['音乐名字']}"))
+                    paragraph.append(Element.Text(i['点歌人']))
+                c.append(Module.Section(paragraph))
+            print(json.dumps(CardMessage(c)))
             await channel.send(CardMessage(c))
         elif(arg == 'skip'):
             # 在当前服务器歌单有歌曲的时候，你可以直接填入guild_id来获取player
@@ -203,15 +212,19 @@ async def list(msg: Message):
         return
     c = Card()
     c.append(Module.Section('正在播放'))
-    c.append(Module.Header(f"{music_list[1]['音乐名字']} 点歌人：{music_list[1]['点歌人']}"))
+    c.append(Module.Header(f"{music_list[1]['音乐名字']}"))
+    c.append(Module.Section(f"点歌人：{music_list[1]['点歌人']}"))
     c.append(Module.Divider())
     c.append(Module.Section(f"列表中歌曲"))
     if(music_list[2]==[]):
         c.append(Module.Section(f"无更多歌曲"))
     else:
+        paragraph = Struct.Paragraph(2,[Element.Text('歌曲'),Element.Text('点歌人')])
         for index, i in enumerate(music_list[2]):
             # 这里的extra data 便是点歌的时候放入的东西
-            c.append(Module.Section(f"{index + 1}. {i['音乐名字']} 点歌人：{i['点歌人']}"))
+            paragraph.append(f"{index + 1}. {i['音乐名字']}")
+            paragraph.append(i['点歌人'])
+        c.append(Module.Section(paragraph))
     await msg.ctx.channel.send(CardMessage(c))
 
 
@@ -238,6 +251,11 @@ async def on_music_start(play_info: kookvoice.PlayInfo):
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
+    loop=''
+    try:
+        loop=asyncio.get_event_loop()
+    except:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
     # 使用gather同时启动机器人与推流
     loop.run_until_complete(asyncio.gather(bot.start(), kookvoice.start()))

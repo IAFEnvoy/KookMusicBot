@@ -234,6 +234,7 @@ class PlayHandler(threading.Thread):
                     break
                 await asyncio.sleep(0.2)
             command = f'{ffmpeg_bin} -re -loglevel level+info -nostats -i - -map 0:a:0 -acodec libopus -ab 128k -ac 2 -ar 48000 -f tee [select=a:f=rtp:ssrc=1357:payload_type=100]{rtp_url}'
+            print('Running ffmpeg command : ' + command)
             p = await asyncio.create_subprocess_shell(
                 command,
                 stdin=asyncio.subprocess.PIPE,
@@ -257,7 +258,8 @@ class PlayHandler(threading.Thread):
                 file = music_info['file']
                 # start = time.time()
                 # -filter:a "loudnorm=i=-27:tp=0.0"
-                command2 = f'{ffmpeg_bin}  -nostats -i "{file}" -filter:a volume=0.4 -ss {music_info["ss"]} -format pcm_s16le -ac 2  -ar 48000 -f wav -'
+                command2 = f'{ffmpeg_bin} -nostats -i "{file}" -filter:a volume=0.4 -ss {music_info["ss"]} -format pcm_s16le -ac 2  -ar 48000 -f wav -'
+                print('Running ffmpeg command : ' + command2)
 
                 p2 = await asyncio.create_subprocess_shell(
                     command2,
